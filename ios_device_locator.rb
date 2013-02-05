@@ -7,18 +7,16 @@ require 'typhoeus'
 require 'uri'
 
 class IOSDeviceLocator
-  
-  def initialize(username, password)
+
+  def initialize username, password
     @username = username
     @password = password
     @partition = nil
     getPartition
   end
-  
+
   def getDevicesAndLocations
     response = post("/fmipservice/device/#{@username}/initClient")
-    puts response.body
-
     devices_json = JSON.parse(response.body)['content']
     devices_json.collect { |device| hash_to_device(device) }
   end
@@ -27,7 +25,7 @@ class IOSDeviceLocator
 
   def getPartition
     response = post("/fmipservice/device/#{@username}/initClient")
-    @partition = response.headers.match(/MMe-Host:(.*?)$/msi)[1].gsub(' ', '').chomp
+    @partition = response.headers['X-Apple-MMe-Host']
   end
 
   def post(url)
@@ -45,8 +43,8 @@ class IOSDeviceLocator
       'Accept-Language' => 'en-us',
       'Connection' => 'keep-alive'
     }
-      
-    Typhoeus::Request.post(uri, :headers => headers, :follow_location => true, :verbose => true, :max_redirects => 10)
+
+    Typhoeus::Request.post(uri, headers: headers, followlocation: true, verbose: true, maxredirs: 10)
   end
 
   def hash_to_device(hsh)
@@ -56,17 +54,22 @@ class IOSDeviceLocator
     device.class = hsh['deviceClass']
     device.display_name = hsh['deviceDisplayName']
     device.model = hsh['deviceModel']
-    device.latitude = hsh['location']['latitude']
-    device.longitude = hsh['location']['longitude']
-    device.time = hsh['location']['timeStamp']
+
+    if (location = hsh['location'])
+      device.latitude = location['latitude']
+      device.longitude = location['longitude']
+      device.time = location['timeStamp']
+    end
+
     device
   end
 
 end
 
 
+# USAGE: $ ./ruby ios_device_locator username password
 if __FILE__ == $0
-  r = IOSDeviceLocator.new('username', 'password')
+  r = IOSDeviceLocator.new(ARGV[0], ARGV[1])
   devices = r.getDevicesAndLocations
   devices.each { |d| puts "#{d.name} - (#{d.latitude}, #{d.longitude})" }
 end
