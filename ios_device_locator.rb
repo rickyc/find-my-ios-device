@@ -12,7 +12,19 @@ class IOSDeviceLocator
     @username = username
     @password = password
     @partition = nil
+
+    # Except for the initClient method, the format for Find My iPhone (FMI) API endpoints is:
+    #   https://<partition>/<baseURI>/<username>/<method>
+    #
+    # The Find My iPhone app & webapp both use the prsId in place of @username.
+    # Should @username get deprecated in favor of prsId, it can be retrieved like so:
+    #   response = post(@initClient) 
+    #   prsId = JSON.parse(response.body)['serverContext']['prsId']
+
     @baseURI = "/fmipservice/device/#{@username}/"
+
+    # API endpoint methods
+
     @initClient = "initClient"
     @refreshClient = "refreshClient"
     @sendMessage = "sendMessage"
@@ -22,7 +34,12 @@ class IOSDeviceLocator
     @saveLocFoundPref = "saveLocFoundPref"
     @playSound = "playSound"
     @setDeviceAsLost = "lostDevice"
+
+    # Initial connection to API is with an endpoint that returns a 'partition' 
+    # that identifies the URL to use for further API calls, so let's grab it.
+
     getPartition
+  
   end
 
   def getDevicesAndLocations
@@ -32,12 +49,17 @@ class IOSDeviceLocator
     devices_json.collect { |device| hash_to_device(device) }
   end
 
+  # Unsure what the difference between initClient & refreshClient is (besides the endpoint),
+  # but there's probably a good reason the official app uses refreshClient to update device info.
+
   def updateDevicesAndLocations
     resposne = post(@refreshClient)
     puts
     devices_json = JSON.parse(response.body)['content']
     devices_json.collect { |device| hash_to_device(device) }
   end
+
+  # removeDevice only works if the device being removed is offline.
 
   def removeDevice(deviceid)
     options = {
@@ -46,6 +68,8 @@ class IOSDeviceLocator
     post(@removeDevice, options)
   end
   
+  # Play a sound while displaying an alert with an optional custom title
+
   def playSound(deviceid,subject)
     options = {
       'device'=>deviceid, 
@@ -54,6 +78,9 @@ class IOSDeviceLocator
     post(@playSound,options)
   end 
   
+  # If a device goes offline and locFoundEnabled is set to true, then a notification 
+  # email will be sent to the account owner.
+
   def saveLocFoundPref(deviceid,locFoundEnabled=true)
     options = {
       'device'=>deviceid,
@@ -61,6 +88,8 @@ class IOSDeviceLocator
     }
     post(@saveLocFoundPref, options)
   end
+
+  # sendMessage....sends a message (with the option to play a sound)
 
   def sendMessage(deviceid,subject="",text="",sound=false)
     options = {
@@ -73,6 +102,10 @@ class IOSDeviceLocator
     response = post(@sendMessage,options)
   end
 
+  # remoteLock merely sends the phone to the lock screen.
+  # Changing the passcode no longer works & may have been deprecated in the official API. 
+  # If no passcode is set on the device, it can be still set it this way.
+
   def remoteLock(deviceid,oldPasscode="",passcode="")
     options = {
       'device'=>deviceid,
@@ -82,6 +115,14 @@ class IOSDeviceLocator
     response = post(@remoteLock,options)    
   end
 
+  # Tested and working. If you want to try it on your own device, just know that it took a
+  # 16GB iPhone 5 running ios 6.1.4 with 2.5GB free:
+  #   15 mins to become usable (default apps and a few random others installed)
+  #   1.25 hours to be fully restored (includes prev. noted 15 mins)
+  #   Several weeks before all configs were returned to normal (mostly due to laziness on my behalf)
+  #
+  # - Crawford
+
   def remoteWipe(devicedid)
     options = {
       'device'=>deviceid
@@ -89,6 +130,9 @@ class IOSDeviceLocator
     post(@remoteWipe,deviceid)
   end
   
+  # Sets the phone as 'lost', equivalent to sending remoteLock & sendMessage, with the exception of
+  # displaying a phone number & a "Call" button in the message.
+
   def setDeviceAsLost(deviceid,text="", sound=false,trackingEnabled=true,ownerNbr="",emailUpdates=true,lostModeEnabled=true)
     options = {
       'device'=>deviceid, 
@@ -112,8 +156,11 @@ class IOSDeviceLocator
 
   def post(url,options=nil)
     uri = @partition ? "https://#{@partition}#{@baseURI}#{url}" : "https://fmipmobile.icloud.com#{@baseURI}#{url}"
+
     headers = {
-      'Authorization' => "Basic #{Base64.encode64("#{@username}:#{@password}").chomp!}",
+      # Replaced Authorization header with userpwd in the Typhoeus::Request at end of method
+      # because it's a more standard approach, but preserved it here for reference.
+      #   'Authorization' => "Basic #{Base64.encode64("#{@username}:#{@password}").chomp!}",
       'Content-Type' => 'application/json; charset=utf-8',
       'X-Apple-Find-Api-Ver' => '2.0',
       'X-Apple-Authscheme' => 'UserIdGuest',
@@ -124,6 +171,7 @@ class IOSDeviceLocator
       'Accept-Language' => 'en-us',
       'Connection' => 'keep-alive'
     }
+
     unless options.nil?
       clientContext = { 
         'clientContext' => {
@@ -134,9 +182,9 @@ class IOSDeviceLocator
       }
       body = JSON.generate(clientContext.merge(options)) 
 
-      Typhoeus::Request.post(uri, headers: headers, followlocation: true, verbose: true, maxredirs: 10, :body => body)
+      Typhoeus::Request.post(uri, userpwd: "#{@username}:#{@password}", headers: headers, followlocation: true, verbose: true, maxredirs: 10, :body => body)
     else
-      Typhoeus::Request.post(uri, headers: headers, followlocation: true, verbose: true, maxredirs: 10)
+      Typhoeus::Request.post(uri, userpwd: "#{@username}:#{@password}", headers: headers, followlocation: true, verbose: true, maxredirs: 10)
     end
   end
 
@@ -158,7 +206,6 @@ class IOSDeviceLocator
   end
 
 end
-
 
 # USAGE: $ ./ruby ios_device_locator username password
 if __FILE__ == $0
