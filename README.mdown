@@ -2,3 +2,8 @@ Port of Tyler Hall's [sosumi's][] script to ruby as [rosumi][] was a bit out of 
 
 [sosumi's]: https://github.com/tylerhall/sosumi
 [rosumi]: https://github.com/hpop/rosumi
+
+## Todos
+- [ ] Add specs
+- [ ] Gemify
+- [ ] Modulize Code
