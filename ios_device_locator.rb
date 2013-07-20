@@ -14,6 +14,7 @@ class IOSDeviceLocator
     @partition = nil
     @baseURI = "/fmipservice/device/#{@username}/"
     @initClient = "initClient"
+    @refreshClient = "refreshClient"
     @sendMessage = "sendMessage"
     @remoteLock = "remoteLock"
     @remoteWipe = "remoteWipe"
@@ -21,7 +22,6 @@ class IOSDeviceLocator
     @saveLocFoundPref = "saveLocFoundPref"
     @playSound = "playSound"
     @setDeviceAsLost = "lostDevice"
-    @devices = nil
     getPartition
   end
 
@@ -29,7 +29,14 @@ class IOSDeviceLocator
     response = post(@initClient)
     puts 
     devices_json = JSON.parse(response.body)['content']
-    @devices = devices_json.collect { |device| hash_to_device(device) }
+    devices_json.collect { |device| hash_to_device(device) }
+  end
+
+  def updateDevicesAndLocations
+    resposne = post(@refreshClient)
+    puts
+    devices_json = JSON.parse(response.body)['content']
+    devices_json.collect { |device| hash_to_device(device) }
   end
 
   def removeDevice(deviceid)
@@ -39,12 +46,10 @@ class IOSDeviceLocator
     post(@removeDevice, options)
   end
   
-  def playSound(deviced,subject,text)
+  def playSound(deviceid,subject)
     options = {
       'device'=>deviceid, 
-      'subject'=>subject,  
-      'text'=>text,
-      'userText'=>true
+      'subject'=>subject
     }
     post(@playSound,options)
   end 
@@ -93,16 +98,12 @@ class IOSDeviceLocator
       'ownerNbr' => ownerNbr,
       'emailUpdates' => emailUpdates,
       'lostModeEnabled' => lostModeEnabled,
-      'userText'=> text.empty? ? false, true
+      'userText'=> text.empty? ? false : true
     }
-     post(@setDeviceAsLost, options)
+    post(@setDeviceAsLost, options)
   end
 
   private
-
-  def buildOptions
-    
-  end
 
   def getPartition
     response = post(@initClient)
@@ -111,7 +112,6 @@ class IOSDeviceLocator
 
   def post(url,options=nil)
     uri = @partition ? "https://#{@partition}#{@baseURI}#{url}" : "https://fmipmobile.icloud.com#{@baseURI}#{url}"
-    # uri = 'http://requestb.in/12i1sm51'
     headers = {
       'Authorization' => "Basic #{Base64.encode64("#{@username}:#{@password}").chomp!}",
       'Content-Type' => 'application/json; charset=utf-8',
